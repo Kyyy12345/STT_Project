@@ -2,58 +2,150 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>STT 테스트용 오디오 파일 생성기</title>
+    <title>STT 테스트 도구</title>
     <style>
-        body { font-family: sans-serif; text-align: center; padding-top: 50px; background: #f4f6f9; }
-        .container { background: white; max-width: 500px; margin: 0 auto; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        textarea { width: 100%; height: 100px; margin-bottom: 20px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; box-sizing: border-box; }
-        button { background: #4CAF50; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        * { box-sizing: border-box; }
+        body { font-family: sans-serif; text-align: center; padding: 40px 20px; background: #f4f6f9; }
+        .container { background: white; max-width: 560px; margin: 0 auto 30px; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h2 { margin-top: 0; }
+        textarea { width: 100%; height: 100px; margin-bottom: 16px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 15px; }
+        button { background: #4CAF50; color: white; border: none; padding: 11px 20px; font-size: 15px; border-radius: 4px; cursor: pointer; font-weight: bold; }
         button:hover { background: #45a049; }
         button:disabled { background: #aaa; cursor: not-allowed; }
-        #status { margin-top: 20px; color: #333; font-weight: bold; min-height: 24px; }
+        .status { margin-top: 14px; color: #555; font-size: 14px; min-height: 20px; }
+
+        /* STT 섹션 */
+        .file-row { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+        .file-row input[type="file"] { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        .conv-row { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; }
+        .conv-row label { font-size: 14px; white-space: nowrap; color: #555; }
+        .conv-row input[type="text"] { flex: 1; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+
+        /* JSON 결과 박스 */
+        .result-box { display: none; margin-top: 20px; text-align: left; }
+        .result-box h3 { font-size: 14px; color: #888; margin: 0 0 8px; }
+        pre {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            line-height: 1.6;
+            overflow-x: auto;
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .key   { color: #9cdcfe; }
+        .str   { color: #ce9178; }
     </style>
 </head>
 <body>
-<div class="container">
-    <h2>STT 테스트 파일 생성기</h2>
-    <p>텍스트를 입력하면 서버에서 TTS 음성 파일을 생성합니다.</p>
-    <textarea id="text">안녕하세요. 오늘 날씨가 참 좋네요.</textarea>
-    <br>
-    <button id="btn" onclick="generateAudio()">오디오 파일 생성</button>
-    <div id="status"></div>
-</div>
-<script>
-    async function generateAudio() {
-        const text = document.getElementById('text').value.trim();
-        const status = document.getElementById('status');
-        const btn = document.getElementById('btn');
 
+<!-- TTS 섹션 -->
+<div class="container">
+    <h2>1. 오디오 파일 생성 (TTS)</h2>
+    <p style="color:#666; font-size:14px; margin-top:-6px;">텍스트를 입력하면 서버에서 WAV 파일을 생성합니다.</p>
+    <textarea id="ttsText">안녕하세요. 오늘 날씨가 참 좋네요.</textarea>
+    <button id="ttsBtn" onclick="generateAudio()">오디오 파일 생성</button>
+    <div class="status" id="ttsStatus"></div>
+</div>
+
+<!-- STT + 번역 섹션 -->
+<div class="container">
+    <h2>2. STT + 번역</h2>
+    <p style="color:#666; font-size:14px; margin-top:-6px;">오디오 파일을 첨부하면 텍스트 변환 + 영어 번역 결과를 반환합니다.</p>
+
+    <div class="file-row">
+        <input type="file" id="audioFile" accept="audio/*">
+    </div>
+    <div class="conv-row">
+        <label>대화 ID</label>
+        <input type="text" id="conversationId" value="test-001" placeholder="conversationId">
+    </div>
+    <button id="sttBtn" onclick="transcribeAndTranslate()">변환 + 번역 요청</button>
+    <div class="status" id="sttStatus"></div>
+
+    <div class="result-box" id="resultBox">
+        <h3>응답 JSON</h3>
+        <pre id="resultJson"></pre>
+    </div>
+</div>
+
+<script>
+    /* ── TTS ── */
+    async function generateAudio() {
+        const text = document.getElementById('ttsText').value.trim();
+        const status = document.getElementById('ttsStatus');
+        const btn = document.getElementById('ttsBtn');
         if (!text) { alert('텍스트를 입력해주세요.'); return; }
 
         btn.disabled = true;
         status.innerText = '서버에서 음성 생성 중...';
-
         try {
             const res = await fetch('/api/tts?text=' + encodeURIComponent(text));
-            if (!res.ok) {
-                const err = await res.text();
-                throw new Error(err);
-            }
+            if (!res.ok) throw new Error(await res.text());
             const blob = await res.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url;
-            a.download = 'tts_output.wav';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            status.innerText = '다운로드 완료! Bruno에서 tts_output.wav 파일을 업로드하세요.';
+            a.href = url; a.download = 'tts_output.wav';
+            document.body.appendChild(a); a.click();
+            document.body.removeChild(a); URL.revokeObjectURL(url);
+            status.innerText = '다운로드 완료! (tts_output.wav)';
         } catch (e) {
             status.innerText = '오류: ' + e.message;
         } finally {
             btn.disabled = false;
         }
+    }
+
+    /* ── STT + 번역 ── */
+    async function transcribeAndTranslate() {
+        const fileInput = document.getElementById('audioFile');
+        const conversationId = document.getElementById('conversationId').value.trim();
+        const status = document.getElementById('sttStatus');
+        const resultBox = document.getElementById('resultBox');
+        const resultJson = document.getElementById('resultJson');
+        const btn = document.getElementById('sttBtn');
+
+        if (!fileInput.files.length) { alert('오디오 파일을 선택해주세요.'); return; }
+        if (!conversationId) { alert('대화 ID를 입력해주세요.'); return; }
+
+        btn.disabled = true;
+        status.innerText = '변환 중... (시간이 걸릴 수 있습니다)';
+        resultBox.style.display = 'none';
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        formData.append('conversationId', conversationId);
+
+        try {
+            const res = await fetch('/api/audio-translate', {
+                method: 'POST',
+                body: formData
+            });
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+
+            resultJson.innerHTML = formatJson(data);
+            resultBox.style.display = 'block';
+            status.innerText = '완료!';
+        } catch (e) {
+            status.innerText = '오류: ' + e.message;
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    /* JSON 하이라이팅 */
+    function formatJson(obj) {
+        const json = JSON.stringify(obj, null, 2);
+        return json.replace(
+            /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*")\s*(:?)/g,
+            (match, str, _, colon) => colon
+                ? `<span class="key">${str}</span>:`
+                : `<span class="str">${str}</span>`
+        );
     }
 </script>
 </body>

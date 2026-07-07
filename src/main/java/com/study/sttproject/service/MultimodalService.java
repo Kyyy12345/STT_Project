@@ -5,6 +5,7 @@ import com.google.genai.types.*;
 import com.study.sttproject.dto.SttTranslationResult;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
@@ -33,16 +34,37 @@ public class MultimodalService {
         ByteArrayResource resource = toResource(file);
         MimeType mimeType = MimeType.valueOf(file.getContentType());
 
-        return chatClient.prompt()
+        // Step 1: STT - 오디오를 텍스트로 전사 (temperature 0.0 - 추측 없이 정확히)
+        String originalText = chatClient.prompt()
+                .options(GoogleGenAiChatOptions.builder().temperature(0.0))
                 .user(u -> u.text("""
-                        이 오디오를 듣고 두 가지를 JSON으로 반환해주세요:
-                        1. originalText: 오디오의 내용을 그대로 텍스트로 변환
-                        2. translatedText: 변환된 텍스트를 영어로 번역
+                        이 오디오에서 들리는 말을 텍스트로 전사하세요.
+                        규칙:
+                        - 들리는 내용을 한 글자도 바꾸지 말고 그대로 적으세요.
+                        - 어미, 조사, 종결어미를 절대 추측하거나 바꾸지 마세요.
+                        - 확실하지 않은 부분은 [unclear]로 표시하세요.
+                        - 전사된 텍스트만 반환하고 다른 설명은 하지 마세요.
                         """)
                         .media(mimeType, resource))
                 .advisors(spec -> spec.param(ChatMemory.CONVERSATION_ID, conversationId))
                 .call()
-                .entity(SttTranslationResult.class);
+                .content();
+
+        if (originalText == null || originalText.isBlank()) {
+            throw new RuntimeException("STT 결과가 비어있습니다.");
+        }
+
+        // Step 2: 번역 - 전사된 텍스트를 영어로 번역 (temperature 0.3)
+        String translatedText = chatClient.prompt()
+                .options(GoogleGenAiChatOptions.builder().temperature(0.3))
+                .user("다음 텍스트를 영어로 번역하세요. 번역문만 반환하고 다른 설명은 하지 마세요.\n\n" + originalText)
+                .advisors(spec -> spec.param(ChatMemory.CONVERSATION_ID, conversationId))
+                .call()
+                .content();
+
+        return new SttTranslationResult(
+                originalText.trim(),
+                translatedText != null ? translatedText.trim() : "");
     }
 
     private void validateAudio(MultipartFile file) {
