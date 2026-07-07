@@ -14,30 +14,29 @@
         button:disabled { background: #aaa; cursor: not-allowed; }
         .status { margin-top: 14px; color: #555; font-size: 14px; min-height: 20px; }
 
-        /* STT 섹션 */
-        .file-row { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
-        .file-row input[type="file"] { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
-        .conv-row { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; }
-        .conv-row label { font-size: 14px; white-space: nowrap; color: #555; }
-        .conv-row input[type="text"] { flex: 1; padding: 8px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        /* 파일 선택 */
+        .file-row { margin-bottom: 16px; }
+        .file-row input[type="file"] { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
 
-        /* JSON 결과 박스 */
-        .result-box { display: none; margin-top: 20px; text-align: left; }
-        .result-box h3 { font-size: 14px; color: #888; margin: 0 0 8px; }
-        pre {
-            background: #1e1e1e;
-            color: #d4d4d4;
-            padding: 16px;
-            border-radius: 6px;
-            font-size: 14px;
-            line-height: 1.6;
-            overflow-x: auto;
-            margin: 0;
-            white-space: pre-wrap;
-            word-break: break-word;
+        /* 결과 카드 */
+        .result-box { display: none; margin-top: 24px; text-align: left; }
+        .result-box h3 { font-size: 13px; color: #999; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .result-card { border-radius: 8px; overflow: hidden; border: 1px solid #e8e8e8; }
+        .result-row { display: flex; align-items: flex-start; padding: 14px 16px; gap: 12px; }
+        .result-row:not(:last-child) { border-bottom: 1px solid #f0f0f0; }
+        .result-row:first-child { background: #f8f9ff; }
+        .result-row:last-child  { background: #f8fff8; }
+        .lang-badge {
+            flex-shrink: 0;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 12px;
+            margin-top: 2px;
         }
-        .key   { color: #9cdcfe; }
-        .str   { color: #ce9178; }
+        .badge-ko { background: #e8eeff; color: #3b5bdb; }
+        .badge-en { background: #e8f5e9; color: #2e7d32; }
+        .result-text { font-size: 15px; color: #222; line-height: 1.6; word-break: break-word; }
     </style>
 </head>
 <body>
@@ -59,20 +58,35 @@
     <div class="file-row">
         <input type="file" id="audioFile" accept="audio/*">
     </div>
-    <div class="conv-row">
-        <label>대화 ID</label>
-        <input type="text" id="conversationId" value="test-001" placeholder="conversationId">
-    </div>
     <button id="sttBtn" onclick="transcribeAndTranslate()">변환 + 번역 요청</button>
     <div class="status" id="sttStatus"></div>
 
     <div class="result-box" id="resultBox">
-        <h3>응답 JSON</h3>
-        <pre id="resultJson"></pre>
+        <h3>변환 결과</h3>
+        <div class="result-card">
+            <div class="result-row">
+                <span class="lang-badge badge-ko">한국어</span>
+                <span class="result-text" id="resultOriginal"></span>
+            </div>
+            <div class="result-row">
+                <span class="lang-badge badge-en">English</span>
+                <span class="result-text" id="resultTranslated"></span>
+            </div>
+        </div>
     </div>
 </div>
 
 <script>
+    /* 브라우저 세션당 고유 conversationId 자동 생성 (localStorage 유지) */
+    function getConversationId() {
+        let id = localStorage.getItem('stt_conversation_id');
+        if (!id) {
+            id = 'user-' + Math.random().toString(36).slice(2, 10);
+            localStorage.setItem('stt_conversation_id', id);
+        }
+        return id;
+    }
+
     /* ── TTS ── */
     async function generateAudio() {
         const text = document.getElementById('ttsText').value.trim();
@@ -102,14 +116,11 @@
     /* ── STT + 번역 ── */
     async function transcribeAndTranslate() {
         const fileInput = document.getElementById('audioFile');
-        const conversationId = document.getElementById('conversationId').value.trim();
         const status = document.getElementById('sttStatus');
         const resultBox = document.getElementById('resultBox');
-        const resultJson = document.getElementById('resultJson');
         const btn = document.getElementById('sttBtn');
 
         if (!fileInput.files.length) { alert('오디오 파일을 선택해주세요.'); return; }
-        if (!conversationId) { alert('대화 ID를 입력해주세요.'); return; }
 
         btn.disabled = true;
         status.innerText = '변환 중... (시간이 걸릴 수 있습니다)';
@@ -117,17 +128,15 @@
 
         const formData = new FormData();
         formData.append('file', fileInput.files[0]);
-        formData.append('conversationId', conversationId);
+        formData.append('conversationId', getConversationId());
 
         try {
-            const res = await fetch('/api/audio-translate', {
-                method: 'POST',
-                body: formData
-            });
+            const res = await fetch('/api/audio-translate', { method: 'POST', body: formData });
             if (!res.ok) throw new Error(await res.text());
             const data = await res.json();
 
-            resultJson.innerHTML = formatJson(data);
+            document.getElementById('resultOriginal').innerText = data.originalText;
+            document.getElementById('resultTranslated').innerText = data.translatedText;
             resultBox.style.display = 'block';
             status.innerText = '완료!';
         } catch (e) {
@@ -135,17 +144,6 @@
         } finally {
             btn.disabled = false;
         }
-    }
-
-    /* JSON 하이라이팅 */
-    function formatJson(obj) {
-        const json = JSON.stringify(obj, null, 2);
-        return json.replace(
-            /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*")\s*(:?)/g,
-            (match, str, _, colon) => colon
-                ? `<span class="key">${str}</span>:`
-                : `<span class="str">${str}</span>`
-        );
     }
 </script>
 </body>

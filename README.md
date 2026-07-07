@@ -77,7 +77,7 @@ Content-Type: multipart/form-data
 | 파라미터 | 타입 | 설명 |
 |---------|------|------|
 | file | MultipartFile | 오디오 파일 (audio/*) |
-| conversationId | String | 대화 세션 ID |
+| conversationId | String | 대화 세션 ID (UI에서 자동 생성) |
 
 **응답 예시:**
 ```json
@@ -136,7 +136,13 @@ spring:
 ./gradlew bootRun
 ```
 
-브라우저에서 `http://localhost:8080` 접속 → 텍스트 입력 → 오디오 파일 생성 → Bruno로 STT 테스트
+브라우저에서 `http://localhost:8080` 접속
+
+**1. 오디오 파일 생성 (TTS)**
+텍스트 입력 → "오디오 파일 생성" 클릭 → `tts_output.wav` 자동 다운로드
+
+**2. STT + 번역 (브라우저 UI)**
+오디오 파일 첨부 → "변환 + 번역 요청" 클릭 → 한국어 / 영어 결과 카드로 확인
 
 ---
 
@@ -152,6 +158,10 @@ Spring AI 2.0.0의 `GoogleGenAiChatOptions`는 오디오 출력 모달리티를 
 
 ### ChatMemory
 `MessageWindowChatMemory`(인메모리)를 `MessageChatMemoryAdvisor`로 등록해 대화 문맥을 유지합니다.
+
+### 브라우저 UI (index.html)
+- **자동 세션 ID:** `localStorage`에 `user-xxxxxxxx` 형식의 고유 ID를 저장해 새로고침해도 동일 사용자로 인식됩니다. 사용자는 ID를 직접 입력할 필요가 없습니다.
+- **결과 카드 UI:** JSON 대신 `한국어 / English` 배지가 붙은 카드 형태로 결과를 표시합니다.
 
 ---
 
